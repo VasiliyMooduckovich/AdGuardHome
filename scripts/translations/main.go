@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -438,23 +439,63 @@ func upload(uri *url.URL, projectID string, baseLang langCode) (err error) {
 	}
 
 	basePath := filepath.Join(localesDir, defaultBaseFile)
-	b, err := os.ReadFile(basePath)
-	if err != nil {
-		// Don't wrap the error since it's informative enough as is and there
-		// is an annotation deferred already.
-		return err
+
+	formData := map[string]string{
+		"format":   "json",
+		"language": string(lang),
+		"filename": defaultBaseFile,
+		"project":  projectID,
 	}
 
-	formData := url.Values{
-		"format":   {"json"},
-		"language": {string(lang)},
-		"filename": {defaultBaseFile},
-		"project":  {projectID},
-		"file":     {string(b)},
+	return uploadMultiPart(uploadURI, formData, basePath)
+}
+
+func uploadMultiPart(uri *url.URL, formData map[string]string, basePath string) (err error) {
+	defer func() { err = errors.Annotate(err, "upload multipart: %w") }()
+
+	buf := &bytes.Buffer{}
+	w := multipart.NewWriter(buf)
+	var fw io.Writer
+
+	for k, v := range formData {
+		fw, err = w.CreateFormField(k)
+		if err != nil {
+			return fmt.Errorf("creating form field: %w", err)
+		}
+
+		_, err = fw.Write([]byte(v))
+		if err != nil {
+			return fmt.Errorf("multipart writing: %w", err)
+		}
+	}
+
+	file, err := os.Open(basePath)
+	if err != nil {
+		return fmt.Errorf("opening file: %w", err)
+	}
+
+	fw, err = w.CreateFormFile("file", basePath)
+	_, err = io.Copy(fw, file)
+	if err != nil {
+		return fmt.Errorf("copying: %w", err)
+	}
+
+	err = w.Close()
+	if err != nil {
+		return fmt.Errorf("closing multipart writer: %w", err)
 	}
 
 	var client http.Client
-	resp, err := client.PostForm(uploadURI.String(), formData)
+
+	req, err := http.NewRequest(http.MethodPost, uri.String(), buf)
+	if err != nil {
+		return fmt.Errorf("bad request: %w", err)
+	}
+
+	req.Header.Add("Content-Type", w.FormDataContentType())
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("client post form: %w", err)
 	}
