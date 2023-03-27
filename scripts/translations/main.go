@@ -426,6 +426,8 @@ func printUnused(loc locales) {
 // upload base translation.  uri is the base URL.  projectID is the name of the
 // project.  baseLang is the base language code.
 func upload(uri *url.URL, projectID string, baseLang langCode) (err error) {
+	defer func() { err = errors.Annotate(err, "upload: %w") }()
+
 	uploadURI := uri.JoinPath("upload")
 
 	lang := baseLang
@@ -438,34 +440,23 @@ func upload(uri *url.URL, projectID string, baseLang langCode) (err error) {
 	basePath := filepath.Join(localesDir, defaultBaseFile)
 	b, err := os.ReadFile(basePath)
 	if err != nil {
-		return fmt.Errorf("upload: %w", err)
+		// Don't wrap the error since it's informative enough as is and there
+		// is an annotation deferred already.
+		return err
 	}
 
-	formData := struct {
-		Format   string `json:"format"`
-		Language string `json:"language"`
-		FileName string `json:"filename"`
-		Project  string `json:"project"`
-		File     string `json:"file"`
-	}{
-		Format:   "json",
-		Language: string(lang),
-		FileName: defaultBaseFile,
-		Project:  projectID,
-		File:     string(b),
-	}
-
-	buf := &bytes.Buffer{}
-
-	err = json.NewEncoder(buf).Encode(formData)
-	if err != nil {
-		return fmt.Errorf("upload: encoding data: %w", err)
+	formData := url.Values{
+		"format":   {"json"},
+		"language": {string(lang)},
+		"filename": {defaultBaseFile},
+		"project":  {projectID},
+		"file":     {string(b)},
 	}
 
 	var client http.Client
-	resp, err := client.Post(uploadURI.String(), "application/json", buf)
+	resp, err := client.PostForm(uploadURI.String(), formData)
 	if err != nil {
-		return fmt.Errorf("upload: client post: %w", err)
+		return fmt.Errorf("client post form: %w", err)
 	}
 
 	defer func() {
