@@ -184,6 +184,21 @@ func (s *Server) processInitial(dctx *dnsContext) (rc resultCode) {
 		return resultCodeFinish
 	}
 
+	// Handle a reserved domain healthcheck.adguardhome.test.
+	//
+	// [Section 6.2 of RFC 6761] states that DNS Registries/Registrars must not
+	// grant requests to register test names in the normal way to any person or
+	// entity, making domain names under test. TLD free to use in internal
+	// purposes.
+	//
+	// [Section 6.2 of RFC 6761]: https://www.rfc-editor.org/rfc/rfc6761.html#section-6.2
+	if q.Name == "healthcheck.adguardhome.test." {
+		// Generate a NODATA negative response to make nslookup exit with 0.
+		pctx.Res = s.makeResponse(pctx.Req)
+
+		return resultCodeFinish
+	}
+
 	// Get the ClientID, if any, before getting client-specific filtering
 	// settings.
 	var key [8]byte
@@ -191,7 +206,7 @@ func (s *Server) processInitial(dctx *dnsContext) (rc resultCode) {
 	dctx.clientID = string(s.clientIDCache.Get(key[:]))
 
 	// Get the client-specific filtering settings.
-	dctx.protectionEnabled = s.conf.ProtectionEnabled
+	dctx.protectionEnabled = s.UpdatedProtectionStatus()
 	dctx.setts = s.getClientRequestFilteringSettings(dctx)
 
 	return resultCodeSuccess
@@ -243,17 +258,16 @@ func (s *Server) onDHCPLeaseChanged(flags int) {
 		lowhost := strings.ToLower(l.Hostname + "." + s.localDomainSuffix)
 
 		// Assume that we only process IPv4 now.
-		//
-		// TODO(a.garipov):  Remove once we switch to netip.Addr more fully.
-		ip, err := netutil.IPToAddr(l.IP, netutil.AddrFamilyIPv4)
-		if err != nil {
-			log.Debug("dnsforward: skipping invalid ip %v from dhcp: %s", l.IP, err)
+		if !l.IP.Is4() {
+			log.Debug("dnsforward: skipping invalid ip from dhcp: bad ipv4 net.IP %v", l.IP)
 
 			continue
 		}
 
-		ipToHost[ip] = lowhost
-		hostToIP[lowhost] = ip
+		leaseIP := l.IP
+
+		ipToHost[leaseIP] = lowhost
+		hostToIP[lowhost] = leaseIP
 	}
 
 	s.setTableHostToIP(hostToIP)

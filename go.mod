@@ -4,11 +4,11 @@ go 1.19
 
 require (
 	// TODO(a.garipov): Use v0.48.0 when it's released.
-	github.com/AdguardTeam/dnsproxy v0.48.0
+	github.com/AdguardTeam/dnsproxy v0.48.2
 	github.com/AdguardTeam/golibs v0.13.0
 	github.com/AdguardTeam/urlfilter v0.16.1
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/ameshkov/dnscrypt/v2 v2.2.5
+	github.com/ameshkov/dnscrypt/v2 v2.2.6
 	github.com/digineo/go-ipset/v2 v2.2.1
 	github.com/dimfeld/httptreemux/v5 v5.5.0
 	github.com/fsnotify/fsnotify v1.6.0
@@ -21,11 +21,9 @@ require (
 	github.com/kardianos/service v1.2.2
 	github.com/mdlayher/ethernet v0.0.0-20220221185849-529eae5b6118
 	github.com/mdlayher/netlink v1.7.1
-	// TODO(a.garipov): This package is deprecated; find a new one or use
-	// our own code for that.  Perhaps, use gopacket.
-	github.com/mdlayher/raw v0.1.0
+	github.com/mdlayher/packet v1.1.1
 	github.com/miekg/dns v1.1.50
-	github.com/quic-go/quic-go v0.32.0
+	github.com/quic-go/quic-go v0.33.0
 	github.com/stretchr/testify v1.8.2
 	github.com/ti-mo/netfilter v0.5.0
 	go.etcd.io/bbolt v1.3.7
@@ -49,7 +47,7 @@ require (
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/josharian/native v1.1.0 // indirect
-	github.com/mdlayher/packet v1.1.1 // indirect
+	github.com/mdlayher/raw v0.1.0 // indirect
 	github.com/mdlayher/socket v0.4.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.8.3 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
@@ -57,7 +55,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
-	github.com/quic-go/qtls-go1-18 v0.2.0 // indirect
 	github.com/quic-go/qtls-go1-19 v0.2.1 // indirect
 	github.com/quic-go/qtls-go1-20 v0.1.1 // indirect
 	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect

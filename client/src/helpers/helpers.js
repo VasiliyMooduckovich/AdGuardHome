@@ -388,6 +388,12 @@ export const toggleAllServices = (services, change, isSelected) => {
     services.forEach((service) => change(`blocked_services.${service.id}`, isSelected));
 };
 
+export const msToSeconds = (milliseconds) => Math.floor(milliseconds / 1000);
+
+export const msToMinutes = (milliseconds) => Math.floor(milliseconds / 1000 / 60);
+
+export const msToHours = (milliseconds) => Math.floor(milliseconds / 1000 / 60 / 60);
+
 export const secondsToMilliseconds = (seconds) => {
     if (seconds) {
         return seconds * 1000;
@@ -395,6 +401,8 @@ export const secondsToMilliseconds = (seconds) => {
 
     return seconds;
 };
+
+export const msToDays = (milliseconds) => Math.floor(milliseconds / 1000 / 60 / 60 / 24);
 
 export const normalizeRulesTextarea = (text) => text?.replace(/^\n/g, '')
     .replace(/\n\s*\n/g, '\n');

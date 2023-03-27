@@ -16,10 +16,6 @@
   `GET /control/dns_info` method are set if AdGuard Home uses custom IP for
   EDNS Client Subnet.
 
-
-
-## v0.107.27: API changes
-
 ### Deprecated statistics APIs
 
 * The `GET /control/stats_info` HTTP API; use the new `GET
@@ -81,9 +77,29 @@ accept and return a JSON object with the following format:
 }
 ```
 
+### New `"protection_disabled_until"` field in `GET /control/dns_info` response
 
+* The new field `"protection_disabled_until"` in `GET /control/dns_info` is the
+  timestamp until when the protection is disabled.
 
-## v0.107.27: API changes
+### New `"protection_disabled_duration"` field in `GET /control/status` response
+
+* The new field `"protection_disabled_duration"` is the duration of protection
+  pause in milliseconds.
+
+### `POST /control/protection`
+
+* The new `POST /control/protection` HTTP API allows to pause protection for
+  specified duration in milliseconds.
+
+This API accepts a JSON object with the following format:
+
+```json
+{
+  "enabled": false,
+  "duration": 10000
+}
+```
 
 ### Deprecated HTTP APIs
 

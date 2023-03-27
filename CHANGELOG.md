@@ -25,6 +25,12 @@ NOTE: Add new changes BELOW THIS COMMENT.
 
 ### Added
 
+- Docker container's healthcheck ([#3290]).
+- The new HTTP API `POST /control/protection`, that updates protection state
+  and adds an optional pause duration ([#1333]).  The format of request body
+  is described in `openapi/openapi.yaml`.  The duration of this pause could
+  also be set with the config field `protection_disabled_until` in `dns`
+  section of the YAML configuration file.
 - Two new HTTP APIs, `PUT /control/stats/config/update` and `GET
   control/stats/config`, which can be used to set and receive the query log
   configuration.  See openapi/openapi.yaml for the full description.
@@ -118,13 +124,20 @@ In this release, the schema version has changed from 17 to 20.
 
 ### Fixed
 
+- Query log not showing all filtered queries when the “Filtered” log filter is
+  selected ([#5639]).
+- Panic in empty hostname in the filter's URL ([#5631]).
 - Panic caused by empty top-level domain name label in `/etc/hosts` files
   ([#5584]).
 
 [#1163]: https://github.com/AdguardTeam/AdGuardHome/issues/1163
+[#1333]: https://github.com/AdguardTeam/AdGuardHome/issues/1333
 [#1472]: https://github.com/AdguardTeam/AdGuardHome/issues/1472
+[#3290]: https://github.com/AdguardTeam/AdGuardHome/issues/3290
 [#5567]: https://github.com/AdguardTeam/AdGuardHome/issues/5567
 [#5584]: https://github.com/AdguardTeam/AdGuardHome/issues/5584
+[#5631]: https://github.com/AdguardTeam/AdGuardHome/issues/5631
+[#5639]: https://github.com/AdguardTeam/AdGuardHome/issues/5639
 
 [rfc6761]: https://www.rfc-editor.org/rfc/rfc6761
 
