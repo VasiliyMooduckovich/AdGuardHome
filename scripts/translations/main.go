@@ -441,13 +441,29 @@ func upload(uri *url.URL, projectID string, baseLang langCode) (err error) {
 		return fmt.Errorf("upload: %w", err)
 	}
 
-	var buf bytes.Buffer
-	buf.Write(b)
+	formData := struct {
+		Format   string `json:"format"`
+		Language string `json:"language"`
+		FileName string `json:"filename"`
+		Project  string `json:"project"`
+		File     string `json:"file"`
+	}{
+		Format:   "json",
+		Language: string(lang),
+		FileName: defaultBaseFile,
+		Project:  projectID,
+		File:     string(b),
+	}
 
-	uri = translationURL(uploadURI, defaultBaseFile, projectID, lang)
+	buf := &bytes.Buffer{}
+
+	err = json.NewEncoder(buf).Encode(formData)
+	if err != nil {
+		return fmt.Errorf("upload: encoding data: %w", err)
+	}
 
 	var client http.Client
-	resp, err := client.Post(uri.String(), "application/json", &buf)
+	resp, err := client.Post(uploadURI.String(), "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("upload: client post: %w", err)
 	}
