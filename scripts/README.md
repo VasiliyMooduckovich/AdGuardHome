@@ -189,6 +189,10 @@ manifest file templates, and helper scripts.
 
  *  `go run main.go unused`: show the list of unused strings.
 
+ *  `go run main.go auto-add [-n <count>]`: download translation updates from
+    Crowdin and add them to the git.  `n` is optional flag where count is a
+    number of concurrent downloads.
+
 After the download you'll find the output locales in the `client/src/__locales/`
 directory.
 

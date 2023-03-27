@@ -73,33 +73,27 @@ func main() {
 	conf, err := readTwoskyConf()
 	check(err)
 
-	command(uri, projectID, conf)
+	err = command(uri, projectID, conf)
+	check(err)
 }
 
-func command(uri *url.URL, projectID string, conf twoskyConf) {
+func command(uri *url.URL, projectID string, conf twoskyConf) (err error) {
 	switch os.Args[1] {
 	case "summary":
-		err := summary(conf.Languages)
-		check(err)
+		err = summary(conf.Languages)
 	case "download":
-		err := download(uri, projectID, conf.Languages)
-		check(err)
+		err = download(uri, projectID, conf.Languages)
 	case "unused":
-		err := unused()
-		check(err)
+		err = unused()
 	case "upload":
-		err := upload(uri, projectID, conf.BaseLangcode)
-		check(err)
-	// TODO!!: naming
-	case "update":
-		err := update(uri, projectID, conf.Languages, conf.BaseLangcode)
-		check(err)
-	case "upgrade":
-		err := upgrade(uri, projectID, conf.Languages, conf.BaseLangcode)
-		check(err)
+		err = upload(uri, projectID, conf.BaseLangcode)
+	case "auto-add":
+		err = autoAdd(uri, projectID, conf.Languages, conf.BaseLangcode)
 	default:
 		usage("unknown command")
 	}
+
+	return err
 }
 
 // check is a simple error-checking helper for scripts.
@@ -107,6 +101,21 @@ func check(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+// ask reads line from STDIN, returns true if line is 'y', otherwise false.
+func ask(s string) (a bool) {
+	const q = "y/[n]:"
+
+	fmt.Printf("%s %s ", s, q)
+
+	scanner := bufio.NewScanner(os.Stdin)
+
+	scanner.Scan()
+	line := scanner.Text()
+	line = strings.ToLower(line)
+
+	return line == "y"
 }
 
 // usage prints usage.  If addStr is not empty print addStr and exit with code
@@ -119,11 +128,14 @@ Commands:
   summary
         Print summary.
   download [-n <count>]
-        Download translations. count is a number of concurrent downloads.
+        Download translations.  count is a number of concurrent downloads.
   unused
         Print unused strings.
   upload
-        Upload translations.`
+        Upload translations.
+  auto-add [-n <count>]
+        Download translation updates from Crowdin and add them to the git.
+        count is a number of concurrent downloads.`
 
 	if addStr != "" {
 		fmt.Printf("%s\n%s\n", addStr, usageStr)
@@ -403,12 +415,13 @@ func unused() (err error) {
 		return fmt.Errorf("filepath walking %q: %w", srcDir, err)
 	}
 
-	err = removeUnused(fileNames, baseLoc)
+	err = findUnused(fileNames, baseLoc)
 
 	return errors.Annotate(err, "removing unused: %w")
 }
 
-func removeUnused(fileNames []string, loc locales) (err error) {
+// findUnused text labels from fileNames.
+func findUnused(fileNames []string, loc locales) (err error) {
 	knownUsed := []textLabel{
 		"blocking_mode_refused",
 		"blocking_mode_nxdomain",
@@ -489,16 +502,16 @@ func upload(uri *url.URL, projectID string, baseLang langCode) (err error) {
 	return nil
 }
 
-// TODO!!: docs
-func update(uri *url.URL, projectID string, langs languages, baseLang langCode) (err error) {
-	defer func() {
-		err = errors.Annotate(err, "update: %w")
-	}()
+// autoAdd downloads translation updates from Crowdin and adds them to the git.
+func autoAdd(uri *url.URL, projectID string, langs languages, baseLang langCode) (err error) {
+	defer func() { err = errors.Annotate(err, "update: %w") }()
 
 	fmt.Println("Downloading the locales.")
 
 	err = download(uri, projectID, langs)
 	if err != nil {
+		// Don't wrap the error since it's informative enough as is and there
+		// is an annotation deferred already.
 		return err
 	}
 
@@ -506,27 +519,42 @@ func update(uri *url.URL, projectID string, langs languages, baseLang langCode) 
 
 	ch, err := checkBaseLocale()
 	if err != nil {
+		// Don't wrap the error since it's informative enough as is and there
+		// is an annotation deferred already.
 		return err
 	}
 
-	if ch == deletion {
-		err = handleDeletion(uri, projectID, baseLang)
-		if err != nil {
-			return err
-		}
+	switch ch {
+	case none:
+		fmt.Println("There are no changes.")
+	case deletion:
+		fmt.Println("There are deletions.")
+
+		return baseLocaleDeletions(uri, projectID, baseLang)
+	case addition:
+		fmt.Println("There are additions.")
+		err = baseLocaleAdditions()
+	default:
+		panic("undefined change")
 	}
 
-	if ch == addition {
-		err = handleAddition()
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		// Don't wrap the error since it's informative enough as is and
+		// there is an annotation deferred already.
+		return err
 	}
 
+	return autoAddChanges(langs)
+}
+
+// autoAddChanges adds translation changes to the git.
+func autoAddChanges(langs languages) (err error) {
 	fmt.Println("Checking if the release-blocker locales are fully translated")
 
 	err = checkReleaseBlockerLocales(langs)
 	if err != nil {
+		// Don't wrap the error since it's informative enough as is and there
+		// is an annotation deferred already.
 		return err
 	}
 
@@ -534,30 +562,41 @@ func update(uri *url.URL, projectID string, langs languages, baseLang langCode) 
 
 	err = addAdditions()
 	if err != nil {
+		// Don't wrap the error since it's informative enough as is and there
+		// is an annotation deferred already.
 		return err
 	}
 
-	if !ask("Proceed to remove deletion changes?") {
+	fmt.Println("Printing the list of files with deletion changes.")
+
+	printDeletions()
+
+	if !ask("Proceed to restore files with deletion changes?") {
 		return nil
 	}
 
-	fmt.Println("Removing deletion changes.")
-
 	err = restoreLocales()
-	check(err)
+	if err != nil {
+		// Don't wrap the error since it's informative enough as is and there
+		// is an annotation deferred already.
+		return err
+	}
 
-	fmt.Println(`Make sure that you're on fresh master.
+	const farewell = `Make sure that you're on fresh master.
     git status
 Commit the changes.
     git checkout -b 'upd-i18n'
     git commit -m 'client: upd i18n'
 When merging the commit, only mention the GitHub issue 2643 if
-the update is before a final release as opposed to a beta one.`)
+the update is before a final release as opposed to a beta one.`
+
+	fmt.Println(farewell)
 
 	return nil
 }
 
-func handleDeletion(uri *url.URL, projectID string, baseLang langCode) (err error) {
+// baseLocaleDeletions handles deletion changes to the base locale.
+func baseLocaleDeletions(uri *url.URL, projectID string, baseLang langCode) (err error) {
 	err = restoreLocales()
 	if err != nil {
 		return err
@@ -577,18 +616,14 @@ func handleDeletion(uri *url.URL, projectID string, baseLang langCode) (err erro
 	return nil
 }
 
-func handleAddition() (err error) {
+// baseLocaleAdditions handles addition changes to the base locale.
+func baseLocaleAdditions() (err error) {
 	// If there are additions, then someone probably unuploaded changes
 	// from unmerged branches.  This isn't critical, so just add this
 	// change.
-	fmt.Println("Adding english locale.")
-	err = addBaseLocale()
+	fmt.Println("Adding base locale.")
 
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return addBaseLocale()
 }
 
 type change int
@@ -600,10 +635,12 @@ const (
 	addition
 )
 
-// checkBaseLocale returns change or error.  change is 0 if there is no
-// changes, 1 if there is additions, and -1 if there is deletions.
+// checkBaseLocale returns change or error.  change is 0 if there are no
+// changes, 1 if there are at elast one addition, and -1 if there are no
+// additions.
 func checkBaseLocale() (ch change, err error) {
 	path := filepath.Join(localesDir, defaultBaseFile)
+
 	cmd := exec.Command("git", "diff", "-U0", path)
 
 	buf := &bytes.Buffer{}
@@ -633,6 +670,8 @@ func checkBaseLocale() (ch change, err error) {
 	return deletion, nil
 }
 
+// checkReleaseBlockerLocales returns nil if translations of the release
+// blocker locales are up to date.
 func checkReleaseBlockerLocales(langs languages) (err error) {
 	sum, err := getSummary(langs)
 	if err != nil {
@@ -662,20 +701,19 @@ func checkReleaseBlockerLocales(langs languages) (err error) {
 	return nil
 }
 
+// restoreLocales reverts changes to the locales.
 func restoreLocales() (err error) {
 	cmd := exec.Command("git", "restore", localesDir)
 
-	buf := &bytes.Buffer{}
-	cmd.Stdout = buf
-
 	err = cmd.Run()
 	if err != nil {
-		return fmt.Errorf("checking base locale: %w", err)
+		return fmt.Errorf("restoring locales: %w", err)
 	}
 
 	return nil
 }
 
+// addBaseLocale adds base locale to the git.
 func addBaseLocale() (err error) {
 	path := filepath.Join(localesDir, defaultBaseFile)
 	cmd := exec.Command("git", "add", "-p", path)
@@ -689,15 +727,19 @@ func addBaseLocale() (err error) {
 		return fmt.Errorf("adding base locale: %w", err)
 	}
 
-	fmt.Printf("adding base locale: %q\n", path)
-
 	return nil
 }
 
+// addAdditions adds locales, except base localse, with additional changes to
+// the git.
 func addAdditions() (err error) {
-	adds, err := getAdditions()
+	adds, _, err := getChangedLocales()
 	if err != nil {
 		return fmt.Errorf("adding changes: %w", err)
+	}
+
+	for _, v := range adds {
+		fmt.Println(v)
 	}
 
 	for _, v := range adds {
@@ -718,7 +760,10 @@ func addAdditions() (err error) {
 	return nil
 }
 
-func getAdditions() (adds []string, err error) {
+// getChangedLocales returns locales with changes, except base locale, or
+// error.  adds is the list of locales with atleast one additional change.
+// dels is the list of locales with non-additional changes.
+func getChangedLocales() (adds, dels []string, err error) {
 	cmd := exec.Command("git", "diff", "-U0", localesDir)
 
 	buf := &bytes.Buffer{}
@@ -726,102 +771,50 @@ func getAdditions() (adds []string, err error) {
 
 	err = cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("update running: %w", err)
+		return nil, nil, fmt.Errorf("getting changes: %w", err)
 	}
 
 	scanner := bufio.NewScanner(buf)
 	key := ""
+	var all []string
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
 		if strings.HasPrefix(line, "+++") {
 			i := strings.LastIndex(line, "/")
+			key = line[i+1:]
 
-			key = line[i:]
+			all = append(all, key)
 		} else if strings.HasPrefix(line, "+") {
+			if key == defaultBaseFile {
+				continue
+			}
+
 			adds = append(adds, key)
 		}
 	}
 
-	return adds, nil
-}
+	adds = slices.Compact(adds)
 
-func upgrade(uri *url.URL, projectID string, langs languages, baseLang langCode) (err error) {
-	fmt.Println(`Do not upload anything until the feature branch that
-introduces the text is merged.  Once the branch is merged, proceed.`)
-
-	if !ask("Proceed?") {
-		return nil
-	}
-
-	defer func() {
-		err = errors.Annotate(err, "upgrade: %w")
-	}()
-
-	fmt.Println("Downloading the locales.")
-
-	err = download(uri, projectID, langs)
-	if err != nil {
-		fmt.Println("up grade download")
-		return err
-	}
-
-	fmt.Println("Checking if the English locale is up to date.")
-
-	ch, err := checkBaseLocale()
-	if err != nil {
-		return err
-	}
-
-	if ch == none {
-		fmt.Println("There is no changes.  Exiting.")
-
-		return nil
-	} else if ch == addition {
-		// If there are additions, then someone probably unuploaded changes
-		// from unmerged branches.  This isn't critical, so just add this
-		// change.
-		fmt.Println("Adding english locale.")
-		err = addBaseLocale()
-
-		if err != nil {
-			return err
+	for _, v := range all {
+		if !slices.Contains(adds, v) {
+			dels = append(dels, v)
 		}
 	}
 
-	if !ask("Proceed to restore locales?") {
-		return nil
-	}
-
-	err = restoreLocales()
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Uploading english locale.")
-	err = upload(uri, projectID, baseLang)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return adds, dels, nil
 }
 
-// ask reads line from STDIN if line is 'y' returns true, otherwise false.
-func ask(s string) (a bool) {
-	const q = "y/[n]: "
-
-	if s != "" {
-		fmt.Printf("%s ", s)
+// printDeletions prints list of translations with non-additional changes.
+func printDeletions() {
+	_, dels, err := getChangedLocales()
+	if err != nil {
+		log.Info("printing locales with deletions: %s", err)
 	}
-	fmt.Printf("%s ", q)
 
-	scanner := bufio.NewScanner(os.Stdin)
-
-	scanner.Scan()
-	line := scanner.Text()
-	line = strings.ToLower(line)
-
-	return line == "y"
+	for _, v := range dels {
+		path := filepath.Join(localesDir, v)
+		fmt.Println(path)
+	}
 }
