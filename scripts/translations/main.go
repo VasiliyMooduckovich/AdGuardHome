@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -478,7 +479,17 @@ func uploadMultiPart(uri *url.URL, formData map[string]string, basePath string) 
 		err = errors.WithDeferred(err, file.Close())
 	}()
 
-	fw, err = w.CreateFormFile("file", basePath)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Type", "application/json")
+
+	d := fmt.Sprintf("form-data; name=%q; filename=%q", "file", defaultBaseFile)
+	h.Set("Content-Disposition", d)
+
+	fw, err = w.CreatePart(h)
+	if err != nil {
+		return fmt.Errorf("creating multipart: %w", err)
+	}
+
 	_, err = io.Copy(fw, file)
 	if err != nil {
 		return fmt.Errorf("copying: %w", err)
@@ -489,14 +500,23 @@ func uploadMultiPart(uri *url.URL, formData map[string]string, basePath string) 
 		return fmt.Errorf("closing multipart writer: %w", err)
 	}
 
+	err = sendMultiPart(uri.String(), w.FormDataContentType(), buf)
+	if err != nil {
+		return fmt.Errorf("sending multipart: %w", err)
+	}
+
+	return nil
+}
+
+func sendMultiPart(uriStr, cType string, buf *bytes.Buffer) (err error) {
 	var client http.Client
 
-	req, err := http.NewRequest(http.MethodPost, uri.String(), buf)
+	req, err := http.NewRequest(http.MethodPost, uriStr, buf)
 	if err != nil {
 		return fmt.Errorf("bad request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Content-Type", cType)
 
 	resp, err := client.Do(req)
 	if err != nil {
