@@ -448,27 +448,38 @@ func upload(uri *url.URL, projectID string, baseLang langCode) (err error) {
 		"project":  projectID,
 	}
 
-	return uploadMultipart(uploadURI, formData, basePath)
+	buf, cType, err := prepareMultipartMsg(formData, basePath)
+	if err != nil {
+		return fmt.Errorf("preparing multipart msg: %w", err)
+	}
+
+	err = send(uploadURI.String(), cType, buf)
+	if err != nil {
+		return fmt.Errorf("sending multipart msg: %w", err)
+	}
+
+	return nil
 }
 
-// uploadMultipart prepares and uploads translation data.
-func uploadMultipart(uri *url.URL, formData map[string]string, basePath string) (err error) {
-	defer func() { err = errors.Annotate(err, "upload multipart: %w") }()
-
-	buf := &bytes.Buffer{}
+// prepareMultipartMsg prepares translation data for upload.
+func prepareMultipartMsg(
+	formData map[string]string,
+	basePath string,
+) (buf *bytes.Buffer, cType string, err error) {
+	buf = &bytes.Buffer{}
 	w := multipart.NewWriter(buf)
 	var fw io.Writer
 
 	for k, v := range formData {
 		err = w.WriteField(k, v)
 		if err != nil {
-			return fmt.Errorf("writing field: %w", err)
+			return nil, "", fmt.Errorf("writing field: %w", err)
 		}
 	}
 
 	file, err := os.Open(basePath)
 	if err != nil {
-		return fmt.Errorf("opening file: %w", err)
+		return nil, "", fmt.Errorf("opening file: %w", err)
 	}
 
 	defer func() {
@@ -483,25 +494,20 @@ func uploadMultipart(uri *url.URL, formData map[string]string, basePath string) 
 
 	fw, err = w.CreatePart(h)
 	if err != nil {
-		return fmt.Errorf("creating multipart: %w", err)
+		return nil, "", fmt.Errorf("creating part: %w", err)
 	}
 
 	_, err = io.Copy(fw, file)
 	if err != nil {
-		return fmt.Errorf("copying: %w", err)
+		return nil, "", fmt.Errorf("copying: %w", err)
 	}
 
 	err = w.Close()
 	if err != nil {
-		return fmt.Errorf("closing multipart writer: %w", err)
+		return nil, "", fmt.Errorf("closing writer: %w", err)
 	}
 
-	err = send(uri.String(), w.FormDataContentType(), buf)
-	if err != nil {
-		return fmt.Errorf("sending multipart: %w", err)
-	}
-
-	return nil
+	return buf, w.FormDataContentType(), nil
 }
 
 // send POST request to uriStr.
