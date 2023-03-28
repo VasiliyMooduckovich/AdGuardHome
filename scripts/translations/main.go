@@ -474,6 +474,10 @@ func uploadMultiPart(uri *url.URL, formData map[string]string, basePath string) 
 		return fmt.Errorf("opening file: %w", err)
 	}
 
+	defer func() {
+		err = errors.WithDeferred(err, file.Close())
+	}()
+
 	fw, err = w.CreateFormFile("file", basePath)
 	_, err = io.Copy(fw, file)
 	if err != nil {
@@ -492,8 +496,7 @@ func uploadMultiPart(uri *url.URL, formData map[string]string, basePath string) 
 		return fmt.Errorf("bad request: %w", err)
 	}
 
-	req.Header.Add("Content-Type", w.FormDataContentType())
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", w.FormDataContentType())
 
 	resp, err := client.Do(req)
 	if err != nil {
