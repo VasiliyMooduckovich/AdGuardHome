@@ -448,10 +448,11 @@ func upload(uri *url.URL, projectID string, baseLang langCode) (err error) {
 		"project":  projectID,
 	}
 
-	return uploadMultiPart(uploadURI, formData, basePath)
+	return uploadMultipart(uploadURI, formData, basePath)
 }
 
-func uploadMultiPart(uri *url.URL, formData map[string]string, basePath string) (err error) {
+// uploadMultipart prepares and uploads translation data.
+func uploadMultipart(uri *url.URL, formData map[string]string, basePath string) (err error) {
 	defer func() { err = errors.Annotate(err, "upload multipart: %w") }()
 
 	buf := &bytes.Buffer{}
@@ -500,7 +501,7 @@ func uploadMultiPart(uri *url.URL, formData map[string]string, basePath string) 
 		return fmt.Errorf("closing multipart writer: %w", err)
 	}
 
-	err = sendMultiPart(uri.String(), w.FormDataContentType(), buf)
+	err = send(uri.String(), w.FormDataContentType(), buf)
 	if err != nil {
 		return fmt.Errorf("sending multipart: %w", err)
 	}
@@ -508,7 +509,8 @@ func uploadMultiPart(uri *url.URL, formData map[string]string, basePath string) 
 	return nil
 }
 
-func sendMultiPart(uriStr, cType string, buf *bytes.Buffer) (err error) {
+// send POST request to uriStr.
+func send(uriStr, cType string, buf *bytes.Buffer) (err error) {
 	var client http.Client
 
 	req, err := http.NewRequest(http.MethodPost, uriStr, buf)
