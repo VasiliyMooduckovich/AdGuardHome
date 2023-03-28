@@ -460,14 +460,9 @@ func uploadMultipart(uri *url.URL, formData map[string]string, basePath string) 
 	var fw io.Writer
 
 	for k, v := range formData {
-		fw, err = w.CreateFormField(k)
+		err = w.WriteField(k, v)
 		if err != nil {
-			return fmt.Errorf("creating form field: %w", err)
-		}
-
-		_, err = fw.Write([]byte(v))
-		if err != nil {
-			return fmt.Errorf("multipart writing: %w", err)
+			return fmt.Errorf("writing field: %w", err)
 		}
 	}
 
